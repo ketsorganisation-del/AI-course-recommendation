@@ -2,18 +2,18 @@
   "version": 2,
   "builds": [
     {
-      "src": "api/**/*.js",
+      "src": "api/recommendations.js",
       "use": "@vercel/node"
     },
     {
-      "src": "AI/api/main.py",
+      "src": "AI/app/main.py",
       "use": "@vercel/python"
     }
   ],
   "routes": [
     {
-      "src": "/api/recommendations",
-      "dest": "AI/api/main.py"
+      "src": "/api/get-python-recommendations",
+      "dest": "AI/app/main.py"
     }
   ]
 }
