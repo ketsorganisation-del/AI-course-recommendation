@@ -6,26 +6,49 @@ import { NextResponse } from "next/server";
 
 const execFileAsync = promisify(execFile);
 
-function resolvePythonExecutable() {
-    const candidates = [
-        process.env.PYTHON_BIN,
-        path.join(process.cwd(), "AI", "app", "venv", "Scripts", process.platform === "win32" ? "python.exe" : "python"),
-        path.join(process.cwd(), "AI", "app", "venv", "bin", "python"),
-        process.platform === "win32" ? "python.exe" : "python3",
-        "python",
-    ].filter(Boolean);
+// function resolvePythonExecutable() {
+//     const candidates = [
+//         process.env.PYTHON_BIN,
+//         path.join(process.cwd(), "AI", "app", "venv", "Scripts", process.platform === "win32" ? "python.exe" : "python"),
+//         path.join(process.cwd(), "AI", "app", "venv", "bin", "python"),
+//         process.platform === "win32" ? "python.exe" : "python3",
+//         "python",
+//     ].filter(Boolean);
 
-    for (const candidate of candidates) {
-        if (!candidate) continue;
-        if (candidate.includes(path.sep) && fs.existsSync(candidate)) {
-            return candidate;
-        }
-        if (!candidate.includes(path.sep)) {
-            return candidate;
-        }
+//     for (const candidate of candidates) {
+//         if (!candidate) continue;
+//         if (candidate.includes(path.sep) && fs.existsSync(candidate)) {
+//             return candidate;
+//         }
+//         if (!candidate.includes(path.sep)) {
+//             return candidate;
+//         }
+//     }
+
+//     return "python";
+// }
+
+async function callPythonScript(textToSend) {
+  try {
+    const response = await fetch('/api/process', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ text: textToSend }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
 
-    return "python";
+    const data = await response.json();
+    console.log("Data back from Python:", data.processedData);
+    return data.processedData;
+    
+  } catch (error) {
+    console.error("Failed to communicate with Python runtime:", error);
+  }
 }
 
 export async function GET(request) {

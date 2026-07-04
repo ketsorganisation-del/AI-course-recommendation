@@ -22,6 +22,40 @@ MONGODB_DB = os.getenv("MONGODB_DB", "coursify")
 COLLECTION_NAME = os.getenv("COURSE_COLLECTION_NAME", "course-data")
 RECOMMENDATION_LIMIT = int(os.getenv("RECOMMENDATION_LIMIT", "10"))
 
+from http.server import BaseHTTPRequestHandler
+import json
+from urllib.parse import urlparse, parse_qs
+
+class handler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        # 1. Read the incoming request body length
+        content_length = int(self.headers['Content-Length'])
+        post_data = self.rfile.read(content_length)
+        
+        # 2. Parse the JSON data sent from JavaScript
+        data = json.loads(post_data.decode('utf-8'))
+        
+        # --- YOUR PYTHON LOGIC HERE ---
+        # Example: Let's assume your script just reverses a string
+        input_text = data.get("text", "")
+        result = input_text[::-1] 
+        # ------------------------------
+
+        # 3. Send the response headers
+        self.send_response(200)
+        self.send_header('Content-type', 'application/json')
+        # Handle CORS if calling from a different local port during dev
+        self.send_header('Access-Control-Allow-Origin', '*') 
+        self.end_headers()
+        
+        # 4. Send the data back to Node.js
+        response_body = {
+            "status": "success",
+            "processedData": result
+        }
+        self.wfile.write(json.dumps(response_body).encode('utf-8'))
+        return
+
 
 def get_course_collection():
     client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=5000)
