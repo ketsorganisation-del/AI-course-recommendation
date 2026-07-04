@@ -1,7 +1,6 @@
-import Navbar from "@/app/page-components/nav-header/page"
+import Navbar from "@/app/page-components/nav-header/page";
 import "./globals.css";
-import { Settings, NotebookPenIcon } from "lucide-react";
-import {TooltipProvider} from "@/components/ui/tooltip"
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 export const metadata = {
   title: "Coursify",
@@ -13,22 +12,16 @@ export default function RootLayout({ children }) {
     <html lang="en" className="dark">
       <head>
         <style>
-          @import url('https://fonts.googleapis.com/css2?family=Send+Flowers&display=swap');
-          @import url('https://fonts.googleapis.com/css2?family=DynaPuff:wght@400..700&display=swap');
+          @import url("https://fonts.googleapis.com/css2?family=Send+Flowers&display=swap");
+          @import url("https://fonts.googleapis.com/css2?family=DynaPuff:wght@400..700&display=swap");
         </style>
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       </head>
       <body className="min-h-full flex flex-col">
         <Navbar />
-        
-          
-
-          <main className=" w-full">
-            <TooltipProvider>
-            {children}
-            </TooltipProvider>
-          </main>
-      
+        <main className="w-full">
+          <TooltipProvider>{children}</TooltipProvider>
+        </main>
       </body>
     </html>
   );

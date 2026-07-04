@@ -19,11 +19,11 @@ const FAQS = [
   },
   {
     q: "How does the AI model build study tracks?",
-    a: "Our system matches your search terms against cataloged structures of standard academic programs and industry certifications. It then queries active recommendation APIs (like Google Gemini) to fill details, check link references, and compile estimated learning hours."
+    a: "Our system matches your search terms against cataloged structures of standard academic programs and industry certifications. It then gathers relevant learning resources and compiles estimated learning hours."
   },
   {
     q: "Can I customize the generated study plans?",
-    a: "Yes. Once a plan is generated, you can use the chat interface to submit follow-up prompts (e.g., 'Can you explain week 2 in detail?' or 'Add a quiz about components'). The recommender will adapt and add recommendations dynamically."
+    a: "Yes. Once a plan is generated, you can use the chat interface to submit follow-up prompts (e.g., 'Can you explain week 2 in detail?' or 'Add a quiz about components'). The planner will adapt and expand the study path dynamically."
   },
   {
     q: "Where is my learning progress saved?",

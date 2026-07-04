@@ -200,6 +200,12 @@ function ChatContent() {
   const [saveLoading, setSaveLoading] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [searchHistoryQuery, setSearchHistoryQuery] = useState("");
+  const [selectedCourse, setSelectedCourse] = useState(null);
+  const [recommendations, setRecommendations] = useState([]);
+  const [revealedRecommendations, setRevealedRecommendations] = useState([]);
+  const [typingRecommendationIndex, setTypingRecommendationIndex] = useState(null);
+  const revealTimersRef = useRef([]);
+  const messageTypeIntervalRef = useRef(null);
 
   // Read login state and initial query
   useEffect(() => {
@@ -245,6 +251,17 @@ function ChatContent() {
     scrollToBottom();
   }, [messages, isTyping]);
 
+  useEffect(() => {
+    return () => {
+      revealTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+      revealTimersRef.current = [];
+      if (messageTypeIntervalRef.current) {
+        window.clearInterval(messageTypeIntervalRef.current);
+        messageTypeIntervalRef.current = null;
+      }
+    };
+  }, []);
+
   // Trigger simulated AI response
   const triggerBotResponse = async (promptText) => {
     // User message
@@ -261,26 +278,83 @@ function ChatContent() {
     });
 
     // Simulated network delay
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await new Promise((resolve) => setTimeout(resolve, 800));
 
-    // Get curriculum data
+    let serverRecommendations = [];
+    try {
+      const response = await fetch(`/api/recommendations?q=${encodeURIComponent(promptText)}`);
+      const data = await response.json();
+      if (response.ok && Array.isArray(data.recommendations)) {
+        serverRecommendations = data.recommendations;
+      }
+    } catch (error) {
+      console.error("Failed to fetch recommendations", error);
+    }
+
+    setRecommendations(serverRecommendations);
+    setRevealedRecommendations([]);
+    setTypingRecommendationIndex(null);
+    revealTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    revealTimersRef.current = [];
+    if (messageTypeIntervalRef.current) {
+      window.clearInterval(messageTypeIntervalRef.current);
+      messageTypeIntervalRef.current = null;
+    }
+
     const curriculum = getCurriculumData(promptText);
     curriculum.query = promptText;
+    curriculum.recommendations = serverRecommendations;
+    curriculum.title = serverRecommendations.length > 0
+      ? `Recommended Courses for ${promptText}`
+      : curriculum.title;
+    curriculum.subtitle = serverRecommendations.length > 0
+      ? `Top matches from the server recommendation engine for "${promptText}"`
+      : curriculum.subtitle;
+    curriculum.estimatedWeeks = serverRecommendations.length > 0 ? 1 : curriculum.estimatedWeeks;
+    curriculum.level = serverRecommendations.length > 0 ? "Server-powered recommendations" : curriculum.level;
 
-    // Stream textual greeting first
     setIsTyping(false);
     const textMsgId = (Date.now() + 1).toString();
+    const fullBotText = serverRecommendations.length > 0
+      ? `I found ${serverRecommendations.length} matching courses for "${promptText}" from the server.`
+      : `I couldn’t find matching courses for "${promptText}" right now.`;
     const botTextMsg = {
       id: textMsgId,
       sender: "bot",
-      text: `Hello ${userName}! Based on your interest in **${promptText}**, I have structured a comprehensive learning path. Below is a detailed, week-by-week curriculum outline with hand-picked videos, articles, and practical projects to accelerate your growth. 
-
-Click through each week to mark them off as you progress, and check out the links in the recommended resources!`,
-      roadmap: curriculum // Attach roadmap data
+      text: "",
+      roadmap: curriculum,
     };
 
     setMessages((prev) => [...prev, botTextMsg]);
     setActiveRoadmap(curriculum);
+
+    let typedChars = 0;
+    messageTypeIntervalRef.current = window.setInterval(() => {
+      setMessages((prev) => prev.map((msg) => msg.id === textMsgId ? { ...msg, text: fullBotText.slice(0, typedChars + 1) } : msg));
+      typedChars += 1;
+
+      if (typedChars >= fullBotText.length) {
+        window.clearInterval(messageTypeIntervalRef.current);
+        messageTypeIntervalRef.current = null;
+      }
+    }, 24);
+
+    window.setTimeout(() => {
+      if (serverRecommendations.length > 0) {
+        serverRecommendations.forEach((_, index) => {
+          const typingTimer = window.setTimeout(() => {
+            setTypingRecommendationIndex(index);
+          }, 700 + index * 800);
+
+          const revealTimer = window.setTimeout(() => {
+            setRevealedRecommendations((prev) => [...prev, serverRecommendations[index]]);
+            setTypingRecommendationIndex(null);
+          }, 1200 + index * 800);
+
+          revealTimersRef.current.push(typingTimer, revealTimer);
+        });
+      }
+    }, fullBotText.length * 24 + 250);
 
     if (userId) {
       saveRoadmap(curriculum);
@@ -366,6 +440,10 @@ Click through each week to mark them off as you progress, and check out the link
   const deleteHistory = (id, e) => {
     e.stopPropagation();
     setChatHistory((prev) => prev.filter((item) => item.id !== id));
+  };
+
+  const handleCourseSelect = (course) => {
+    setSelectedCourse(course);
   };
 
   const startNewChat = () => {
@@ -495,7 +573,7 @@ Click through each week to mark them off as you progress, and check out the link
                 Design Your Learning Journey
               </h2>
               <p className="mt-2 text-gray-400 max-w-md text-sm">
-                Enter a topic, job title, or skill you want to acquire. Our recommendation engine will construct a personalized study guide.
+                Enter a topic, job title, or skill you want to acquire. We’ll build a personalized study guide for you.
               </p>
 
               {/* Suggestions Grid */}
@@ -568,7 +646,7 @@ Click through each week to mark them off as you progress, and check out the link
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-gray-800/80 pb-5 gap-4">
                         <div>
                           <span className="text-xxs font-bold text-cyan-400 uppercase tracking-widest bg-cyan-950 border border-cyan-900/80 px-2.5 py-1 rounded-full">
-                            Curated Learning Map
+                            Server Recommendations
                           </span>
                           <h3 className="text-xl font-bold text-white mt-3">
                             {msg.roadmap.title}
@@ -577,23 +655,13 @@ Click through each week to mark them off as you progress, and check out the link
                             {msg.roadmap.subtitle}
                           </p>
                         </div>
-                        <div className="flex flex-wrap gap-2 shrink-0">
-                          <span className="flex items-center gap-1 text-xs bg-gray-850 px-3 py-1.5 border border-gray-800 text-gray-300 rounded-xl">
-                            <Clock className="w-3.5 h-3.5 text-orange-400" />
-                            <span>{msg.roadmap.estimatedWeeks} Weeks</span>
-                          </span>
-                          <span className="flex items-center gap-1 text-xs bg-gray-850 px-3 py-1.5 border border-gray-800 text-gray-300 rounded-xl">
-                            <Award className="w-3.5 h-3.5 text-yellow-400" />
-                            <span>{msg.roadmap.level}</span>
-                          </span>
-                        </div>
                         <div className="flex flex-wrap items-center gap-3 mt-3">
                           <Button
                             onClick={() => saveRoadmap(msg.roadmap)}
                             disabled={saveLoading}
                             className="bg-cyan-500 hover:bg-cyan-600 text-black rounded-xl px-4 py-2 text-xs font-semibold"
                           >
-                            {saveLoading ? "Saving..." : "Save Roadmap"}
+                            {saveLoading ? "Saving..." : "Save Recommendations"}
                           </Button>
                           {saveStatus && (
                             <span className="text-xxs text-cyan-300">{saveStatus}</span>
@@ -601,116 +669,65 @@ Click through each week to mark them off as you progress, and check out the link
                         </div>
                       </div>
 
-                      {/* Course Completion Progress Bar */}
-                      {(() => {
-                        const total = msg.roadmap.outline.length;
-                        const completed = msg.roadmap.outline.filter((w) => w.completed).length;
-                        const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
-                        return (
-                          <div className="bg-gray-950/60 border border-gray-850 rounded-2xl p-4 flex flex-col gap-2">
-                            <div className="flex justify-between items-center text-xs">
-                              <span className="font-semibold text-gray-300">Syllabus Progress</span>
-                              <span className="font-bold text-cyan-400">{percent}% Completed</span>
-                            </div>
-                            <div className="w-full bg-gray-850 h-2.5 rounded-full overflow-hidden">
-                              <div
-                                className="bg-linear-to-r from-cyan-400 to-blue-500 h-full rounded-full transition-all duration-500 ease-out"
-                                style={{ width: `${percent}%` }}
-                              />
-                            </div>
-                            <div className="text-xxs text-gray-500 mt-1">
-                              {completed} of {total} weeks checked off
-                            </div>
+                      {msg.roadmap.recommendations && msg.roadmap.recommendations.length > 0 && (
+                        <div className="bg-gray-950/50 border border-gray-850 rounded-2xl p-4">
+                          <div className="flex items-center justify-between mb-3">
+                            <span className="text-xs font-bold text-cyan-400 uppercase tracking-wider">Recommended Courses</span>
+                            <span className="text-2xs text-gray-500">Directly from the server</span>
                           </div>
-                        );
-                      })()}
-
-                      {/* Interactive Syllabus Weeks Timeline */}
-                      <div className="space-y-4">
-                        <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block">
-                          Curriculum Timeline
-                        </span>
-                        <div className="relative border-l border-cyan-900/50 ml-3.5 pl-6 space-y-6">
-                          {msg.roadmap.outline.map((w, wIdx) => (
-                            <div key={wIdx} className="relative">
-                              {/* Left Timeline dot containing completion button */}
-                              <button
-                                onClick={() => handleToggleWeek(msgIdx, wIdx)}
-                                className={`absolute -left-10 top-0.5 w-7 h-7 rounded-full flex items-center justify-center border cursor-pointer transition-all duration-300 shadow-lg ${w.completed
-                                  ? "bg-cyan-500 border-cyan-400 text-black scale-110 shadow-cyan-500/20"
-                                  : "bg-gray-950 border-gray-800 text-gray-400 hover:border-cyan-500/50 hover:text-white"
-                                  }`}
-                              >
-                                {w.completed ? (
-                                  <CheckCircle2 className="w-4.5 h-4.5" />
-                                ) : (
-                                  <span className="text-xxs font-bold">{wIdx + 1}</span>
-                                )}
-                              </button>
-
-                              {/* Week Content */}
-                              <div className="flex flex-col gap-2 bg-gray-950/20 border border-gray-900 rounded-2xl p-4.5 hover:border-gray-800 hover:bg-gray-950/40 transition-all">
-                                <div className="flex items-center justify-between flex-wrap gap-2">
-                                  <h4 className={`text-sm font-semibold transition-colors ${w.completed ? "text-cyan-400/80 line-through" : "text-gray-100"
-                                    }`}>
-                                    {w.week}: {w.topic}
-                                  </h4>
-                                  <span className={`text-xxs px-2 py-0.5 rounded font-semibold border ${w.completed
-                                    ? "bg-cyan-950/40 border-cyan-800 text-cyan-400"
-                                    : "bg-gray-900 border-gray-850 text-gray-400"
-                                    }`}>
-                                    {w.completed ? "Done" : "Pending"}
-                                  </span>
-                                </div>
-                                <p className={`text-xs mt-1 leading-relaxed ${w.completed ? "text-gray-500" : "text-gray-400"
-                                  }`}>
-                                  {w.details}
-                                </p>
-
-                                {/* Recommended resources under this week */}
-                                {w.resources && w.resources.length > 0 && (
-                                  <div className="mt-4 pt-3.5 border-t border-gray-900/60 flex flex-col gap-2">
-                                    <span className="text-xxs font-bold text-gray-500 uppercase tracking-widest">
-                                      Study Resources
-                                    </span>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
-                                      {w.resources.map((res, resIdx) => (
-                                        <a
-                                          key={resIdx}
-                                          href={res.link}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          className="flex items-center gap-2.5 p-2 bg-gray-950/60 hover:bg-gray-900 border border-gray-900/80 rounded-xl transition-all duration-300 hover:border-gray-700 group"
-                                        >
-                                          {res.type === "video" && (
-                                            <PlayCircle className="w-5 h-5 text-red-500 shrink-0 group-hover:scale-105 transition-transform" />
-                                          )}
-                                          {res.type === "article" && (
-                                            <FileText className="w-5 h-5 text-blue-400 shrink-0 group-hover:scale-105 transition-transform" />
-                                          )}
-                                          {res.type === "project" && (
-                                            <BookOpen className="w-5 h-5 text-emerald-400 shrink-0 group-hover:scale-105 transition-transform" />
-                                          )}
-                                          <div className="min-w-0 flex-1">
-                                            <p className="text-xxs font-medium text-gray-200 group-hover:text-cyan-400 truncate transition-colors">
-                                              {res.title}
-                                            </p>
-                                            <p className="text-3xs text-gray-500 flex items-center gap-1.5 mt-0.5">
-                                              <span>{res.source}</span>
-                                              <span>•</span>
-                                              <span>{res.duration}</span>
-                                            </p>
-                                          </div>
-                                        </a>
-                                      ))}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            {msg.roadmap.recommendations.map((course, index) => {
+                              const isVisible = index < revealedRecommendations.length;
+                              const isTypingThis = typingRecommendationIndex === index;
+                              return (
+                                <div key={`${course.title}-${index}`} className="space-y-2">
+                                  {isTypingThis && (
+                                    <div className="flex justify-start">
+                                      <div className="rounded-2xl border border-gray-800 bg-gray-900/70 px-3 py-2 text-xs text-gray-400 flex items-center gap-2">
+                                        <span className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce" />
+                                        <span className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce delay-100" />
+                                        <span className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce delay-200" />
+                                        <span>Bot is preparing this recommendation</span>
+                                      </div>
                                     </div>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          ))}
+                                  )}
+                                  <motion.div
+                                    initial={{ opacity: 0, y: 12 }}
+                                    animate={{ opacity: isVisible ? 1 : 0, y: isVisible ? 0 : 12 }}
+                                    transition={{ duration: 0.25, delay: index * 0.08 }}
+                                    className="rounded-xl border border-gray-800 bg-gray-900/70 p-3"
+                                  >
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div>
+                                        <p className="text-sm font-semibold text-white">{course.title}</p>
+                                        <p className="text-2xs text-gray-500 mt-1">{course.category || "Course"}</p>
+                                      </div>
+                                      <span className="text-2xs rounded-full bg-cyan-950 px-2 py-1 text-cyan-400">
+                                        {course.rating}/5
+                                      </span>
+                                    </div>
+                                    <div className="mt-2 flex flex-wrap gap-2 text-2xs text-gray-400">
+                                      {course.university ? (
+                                        <span className="rounded-full border border-gray-800 bg-gray-950/70 px-2 py-1">{course.university}</span>
+                                      ) : null}
+                                      {course.students ? (
+                                        <span className="rounded-full border border-gray-800 bg-gray-950/70 px-2 py-1">{course.students} studying</span>
+                                      ) : null}
+                                    </div>
+                                    <p className="text-2xs text-gray-500 mt-2">Similarity score: {course.score}</p>
+                                  </motion.div>
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
-                      </div>
+                      )}
+
+                      {(!msg.roadmap.recommendations || msg.roadmap.recommendations.length === 0) && (
+                        <div className="rounded-2xl border border-gray-800 bg-gray-950/50 p-4 text-sm text-gray-400">
+                          No recommendations were returned for this request.
+                        </div>
+                      )}
                     </motion.div>
                   )}
                 </div>
@@ -751,7 +768,7 @@ Click through each week to mark them off as you progress, and check out the link
               type="text"
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
-              placeholder="Ask for recommendations (e.g., 'React Hooks', 'Fullstack Python', 'Kubernetes')"
+              placeholder="Ask for a study topic (e.g., 'React Hooks', 'Fullstack Python', 'Kubernetes')"
               className="bg-transparent border-0 focus:ring-0 focus-visible:ring-0 text-white placeholder:text-gray-500 h-10 px-3 text-sm flex-1"
             />
             <Button
@@ -763,7 +780,7 @@ Click through each week to mark them off as you progress, and check out the link
             </Button>
           </form>
           <div className="max-w-4xl w-full mx-auto text-3xs text-gray-500 text-center mt-2.5">
-            Coursify recommendation model can compile content from multiple web resources. Double check critical resources.
+            Coursify can compile content from multiple web resources. Double check critical resources.
           </div>
         </div>
       </div>

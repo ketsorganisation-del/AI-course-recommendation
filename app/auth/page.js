@@ -13,15 +13,22 @@ function AuthForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // Set default mode based on query params
-  const [isLogin, setIsLogin] = useState(true);
+  const [view, setView] = useState("login");
+  const [resetToken, setResetToken] = useState("");
 
   useEffect(() => {
     const mode = searchParams.get("mode");
+    const token = searchParams.get("token") || "";
+    setResetToken(token);
+
     if (mode === "signup") {
-      setIsLogin(false);
+      setView("signup");
+    } else if (mode === "forgot") {
+      setView("forgot");
+    } else if (mode === "reset") {
+      setView("reset");
     } else {
-      setIsLogin(true);
+      setView("login");
     }
   }, [searchParams]);
 
@@ -35,8 +42,13 @@ function AuthForm() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  const handleToggle = (loginMode) => {
-    setIsLogin(loginMode);
+  const isLogin = view === "login";
+  const isSignup = view === "signup";
+  const isForgot = view === "forgot";
+  const isReset = view === "reset";
+
+  const handleToggle = (nextView) => {
+    setView(nextView);
     setError("");
     setSuccess("");
   };
@@ -47,6 +59,86 @@ function AuthForm() {
     setSuccess("");
     setIsLoading(true);
 
+    if (isForgot) {
+      if (!email) {
+        setError("Please enter your email address.");
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        const response = await fetch("/api/auth/forgot-password", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ email }),
+        });
+
+        const result = await response.json();
+        if (!response.ok) {
+          setError(result.error || "Unable to send a reset link. Please try again.");
+        } else {
+          setSuccess(result.message || "If an account exists, a reset link has been prepared.");
+          if (result.resetToken) {
+            router.push(`/auth?mode=reset&token=${encodeURIComponent(result.resetToken)}`);
+          }
+        }
+      } catch (err) {
+        console.error("Forgot password error:", err);
+        setError("An error occurred. Please try again.");
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
+    if (isReset) {
+      if (!resetToken) {
+        setError("Reset token is missing. Please request a new link.");
+        setIsLoading(false);
+        return;
+      }
+
+      if (!password || !confirmPassword) {
+        setError("Please fill in both password fields.");
+        setIsLoading(false);
+        return;
+      }
+
+      if (password !== confirmPassword) {
+        setError("Passwords do not match.");
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        const response = await fetch("/api/auth/reset-password", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ token: resetToken, password }),
+        });
+
+        const result = await response.json();
+        if (!response.ok) {
+          setError(result.error || "Unable to reset your password.");
+        } else {
+          setSuccess("Password reset successful. You can now sign in.");
+          setTimeout(() => {
+            router.push("/auth?mode=login");
+          }, 1200);
+        }
+      } catch (err) {
+        console.error("Reset password error:", err);
+        setError("An error occurred. Please try again.");
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
     // Form validation
     if (!email || !password) {
       setError("Please fill in all required fields.");
@@ -54,13 +146,13 @@ function AuthForm() {
       return;
     }
 
-    if (!isLogin && !name) {
+    if (isSignup && !name) {
       setError("Please enter your name.");
       setIsLoading(false);
       return;
     }
 
-    if (!isLogin && password !== confirmPassword) {
+    if (isSignup && password !== confirmPassword) {
       setError("Passwords do not match.");
       setIsLoading(false);
       return;
@@ -133,46 +225,48 @@ function AuthForm() {
     >
       <div className="text-center">
         <h2 className="text-3xl font-extrabold bg-linear-to-r from-cyan-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent">
-          {isLogin ? "Welcome Back" : "Create Account"}
+          {isLogin ? "Welcome Back" : isForgot ? "Reset Password" : isReset ? "Set New Password" : "Create Account"}
         </h2>
         <p className="mt-2 text-sm text-gray-400">
-          {isLogin ? "Simplify your learning journey with Coursify" : "Start your personalized recommendations today"}
+          {isLogin ? "Simplify your learning journey with Coursify" : isForgot ? "We will help you create a new password securely" : isReset ? "Choose a strong password to continue" : "Start your personalized study journey today"}
         </p>
       </div>
 
       {/* Dynamic Tab Switcher */}
-      <div className="relative flex p-1 bg-gray-950 rounded-xl border border-gray-800/85">
-        <button
-          type="button"
-          onClick={() => handleToggle(true)}
-          className={`flex-1 text-center py-2.5 text-sm font-semibold rounded-lg relative z-10 transition-colors duration-300 cursor-pointer ${isLogin ? "text-white" : "text-gray-400 hover:text-gray-200"
-            }`}
-        >
-          Login
-          {isLogin && (
-            <motion.div
-              layoutId="activeTab"
-              className="absolute inset-0 bg-blue-600/90 rounded-lg -z-10 shadow-lg"
-              transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            />
-          )}
-        </button>
-        <button
-          type="button"
-          onClick={() => handleToggle(false)}
-          className={`flex-1 text-center py-2.5 text-sm font-semibold rounded-lg relative z-10 transition-colors duration-300 cursor-pointer ${!isLogin ? "text-white" : "text-gray-400 hover:text-gray-200"
-            }`}
-        >
-          Sign Up
-          {!isLogin && (
-            <motion.div
-              layoutId="activeTab"
-              className="absolute inset-0 bg-blue-600/90 rounded-lg -z-10 shadow-lg"
-              transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            />
-          )}
-        </button>
-      </div>
+      {!isForgot && !isReset && (
+        <div className="relative flex p-1 bg-gray-950 rounded-xl border border-gray-800/85">
+          <button
+            type="button"
+            onClick={() => handleToggle("login")}
+            className={`flex-1 text-center py-2.5 text-sm font-semibold rounded-lg relative z-10 transition-colors duration-300 cursor-pointer ${isLogin ? "text-white" : "text-gray-400 hover:text-gray-200"
+              }`}
+          >
+            Login
+            {isLogin && (
+              <motion.div
+                layoutId="activeTab"
+                className="absolute inset-0 bg-blue-600/90 rounded-lg -z-10 shadow-lg"
+                transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              />
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => handleToggle("signup")}
+            className={`flex-1 text-center py-2.5 text-sm font-semibold rounded-lg relative z-10 transition-colors duration-300 cursor-pointer ${isSignup ? "text-white" : "text-gray-400 hover:text-gray-200"
+              }`}
+          >
+            Sign Up
+            {isSignup && (
+              <motion.div
+                layoutId="activeTab"
+                className="absolute inset-0 bg-blue-600/90 rounded-lg -z-10 shadow-lg"
+                transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              />
+            )}
+          </button>
+        </div>
+      )}
 
       {/* Error / Success Alerts */}
       <AnimatePresence mode="wait">
@@ -202,7 +296,7 @@ function AuthForm() {
       {/* Auth Forms */}
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <AnimatePresence mode="wait">
-          {!isLogin && (
+          {isSignup && (
             <motion.div
               key="name-field"
               initial={{ opacity: 0, height: 0 }}
@@ -231,55 +325,131 @@ function AuthForm() {
           )}
         </AnimatePresence>
 
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="email" className="text-xs font-semibold text-gray-300">
-            Email Address
-          </Label>
-          <div className="relative">
-            <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-500">
-              <Mail className="h-4.5 w-4.5" />
-            </span>
-            <Input
-              id="email"
-              type="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="pl-11 bg-gray-955/40 border-gray-800 focus:border-blue-500 rounded-xl py-5"
-            />
+        {!isForgot && !isReset && (
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="email" className="text-xs font-semibold text-gray-300">
+              Email Address
+            </Label>
+            <div className="relative">
+              <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-500">
+                <Mail className="h-4.5 w-4.5" />
+              </span>
+              <Input
+                id="email"
+                type="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="pl-11 bg-gray-955/40 border-gray-800 focus:border-blue-500 rounded-xl py-5"
+              />
+            </div>
           </div>
-        </div>
+        )}
 
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="password" className="text-xs font-semibold text-gray-300">
-            Password
-          </Label>
-          <div className="relative">
-            <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-500">
-              <Lock className="h-4.5 w-4.5" />
-            </span>
-            <Input
-              id="password"
-              type={showPassword ? "text" : "password"}
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              className="pl-11 pr-11 bg-gray-955/40 border-gray-800 focus:border-blue-500 rounded-xl py-5"
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-gray-500 hover:text-gray-300 transition-colors cursor-pointer"
-            >
-              {showPassword ? <EyeOff className="h-4.5 w-4.5" /> : <Eye className="h-4.5 w-4.5" />}
-            </button>
+        {isForgot && (
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="email" className="text-xs font-semibold text-gray-300">
+              Email Address
+            </Label>
+            <div className="relative">
+              <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-500">
+                <Mail className="h-4.5 w-4.5" />
+              </span>
+              <Input
+                id="email"
+                type="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="pl-11 bg-gray-955/40 border-gray-800 focus:border-blue-500 rounded-xl py-5"
+              />
+            </div>
           </div>
-        </div>
+        )}
+
+        {(!isForgot && !isReset) && (
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="password" className="text-xs font-semibold text-gray-300">
+              Password
+            </Label>
+            <div className="relative">
+              <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-500">
+                <Lock className="h-4.5 w-4.5" />
+              </span>
+              <Input
+                id="password"
+                type={showPassword ? "text" : "password"}
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="pl-11 pr-11 bg-gray-955/40 border-gray-800 focus:border-blue-500 rounded-xl py-5"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-gray-500 hover:text-gray-300 transition-colors cursor-pointer"
+              >
+                {showPassword ? <EyeOff className="h-4.5 w-4.5" /> : <Eye className="h-4.5 w-4.5" />}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {isReset && (
+          <>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="password" className="text-xs font-semibold text-gray-300">
+                New Password
+              </Label>
+              <div className="relative">
+                <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-500">
+                  <Lock className="h-4.5 w-4.5" />
+                </span>
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  className="pl-11 pr-11 bg-gray-955/40 border-gray-800 focus:border-blue-500 rounded-xl py-5"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-gray-500 hover:text-gray-300 transition-colors cursor-pointer"
+                >
+                  {showPassword ? <EyeOff className="h-4.5 w-4.5" /> : <Eye className="h-4.5 w-4.5" />}
+                </button>
+              </div>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="confirmPassword" className="text-xs font-semibold text-gray-300">
+                Confirm New Password
+              </Label>
+              <div className="relative">
+                <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-500">
+                  <Lock className="h-4.5 w-4.5" />
+                </span>
+                <Input
+                  id="confirmPassword"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="••••••••"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                  className="pl-11 bg-gray-955/40 border-gray-800 focus:border-blue-500 rounded-xl py-5"
+                />
+              </div>
+            </div>
+          </>
+        )}
 
         <AnimatePresence mode="wait">
-          {!isLogin && (
+          {isSignup && (
             <motion.div
               key="confirm-password-field"
               initial={{ opacity: 0, height: 0 }}
@@ -315,10 +485,34 @@ function AuthForm() {
               <input type="checkbox" className="rounded bg-gray-900 border-gray-800 text-blue-500 focus:ring-0" />
               <span>Remember me</span>
             </label>
-            <a href="#" className="text-blue-400 hover:underline transition-colors">
+            <button
+              type="button"
+              onClick={() => handleToggle("forgot")}
+              className="text-blue-400 hover:underline transition-colors cursor-pointer"
+            >
               Forgot password?
-            </a>
+            </button>
           </div>
+        )}
+
+        {isForgot && (
+          <button
+            type="button"
+            onClick={() => handleToggle("login")}
+            className="text-sm text-gray-400 hover:text-cyan-400 transition-colors cursor-pointer text-left"
+          >
+            Back to sign in
+          </button>
+        )}
+
+        {isReset && (
+          <button
+            type="button"
+            onClick={() => handleToggle("login")}
+            className="text-sm text-gray-400 hover:text-cyan-400 transition-colors cursor-pointer text-left"
+          >
+            Back to sign in
+          </button>
         )}
 
         <Button
@@ -330,7 +524,7 @@ function AuthForm() {
             <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
           ) : (
             <>
-              <span>{isLogin ? "Sign In" : "Sign Up"}</span>
+              <span>{isForgot ? "Send Reset Link" : isReset ? "Reset Password" : isLogin ? "Sign In" : "Sign Up"}</span>
               <ArrowRight className="w-4.5 h-4.5" />
             </>
           )}
@@ -338,11 +532,11 @@ function AuthForm() {
       </form>
 
       <div className="text-center text-xs text-gray-400 mt-2">
-        By continuing, you agree to Coursify's{" "}
+        By continuing, you agree to Coursify's {" "}
         <a href="#" className="text-blue-400 hover:underline">
           Terms of Service
         </a>{" "}
-        and{" "}
+        and {" "}
         <a href="#" className="text-blue-400 hover:underline">
           Privacy Policy
         </a>

@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { BackgroundLines } from "@/components/ui/background-lines";
 import { Button } from "@/components/ui/button";
@@ -15,19 +14,25 @@ import {
 } from "@/components/ui/tooltip";
 import SettingsDialog from "@/components/settings-dialog";
 
-export function InputInline({ className }) {
+export function InputInline({ className, value, onChange, onSubmit, loading }) {
   return (
-    <form action="/chat" method="GET" className={`w-full max-w-xl relative z-20 px-4 ${className ?? ""}`}>
+    <form onSubmit={onSubmit} className={`w-full max-w-xl relative z-20 px-4 ${className ?? ""}`}>
       <Field orientation="inline" className="mt-6 w-full flex flex-col sm:flex-row gap-3 items-stretch">
         <Input
           type="search"
           name="q"
+          value={value}
+          onChange={onChange}
           required
           className="w-full bg-gray-700/80 shadow-[0px_12px_60px_-6px_rgba(183,116,183,0.45)] border border-gray-600 focus:ring-2 focus:ring-blue-500 py-3 sm:py-5 text-white text-sm sm:text-base rounded-xl placeholder:text-gray-400"
           placeholder="What would you like to learn today? Ask Coursify..."
         />
-        <Button type="submit" className="w-full sm:w-auto px-4 sm:px-6 py-3 sm:py-5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition-colors">
-          Ask
+        <Button
+          type="submit"
+          disabled={loading}
+          className="w-full sm:w-auto px-4 sm:px-6 py-3 sm:py-5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition-colors disabled:opacity-60"
+        >
+          {loading ? "Searching..." : "Ask"}
         </Button>
       </Field>
     </form>
@@ -38,6 +43,7 @@ export default function Home() {
   const router = useRouter();
   const [username, setUsername] = useState("Learner");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("web development");
 
   useEffect(() => {
     const checkUser = () => {
@@ -58,12 +64,20 @@ export default function Home() {
 
     checkUser();
 
-    // Listen for storage events (e.g. login / logout or name edits in Settings)
     window.addEventListener("storage", checkUser);
     return () => {
       window.removeEventListener("storage", checkUser);
     };
   }, []);
+
+  const handleSearchSubmit = (event) => {
+    event.preventDefault();
+    const trimmedQuery = searchQuery.trim();
+    if (!trimmedQuery) {
+      return;
+    }
+    router.push(`/chat?q=${encodeURIComponent(trimmedQuery)}`);
+  };
 
   return (
     <div className="relative min-h-screen w-full overflow-hidden">
@@ -121,11 +135,16 @@ export default function Home() {
           <h2 className="text-lg sm:text-xl md:text-2xl mt-4 text-gray-300 font-light fade-in-normal max-w-xl leading-relaxed">
             what content suggestions would you like to have today?
           </h2>
-          <InputInline className="relative z-20 mt-6" />
+          <InputInline
+            className="relative z-20 mt-6"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            onSubmit={handleSearchSubmit}
+            loading={false}
+          />
         </main>
       </BackgroundLines>
 
-      {/* Settings Dialog Overlay */}
       <SettingsDialog isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
     </div>
   );
